@@ -6,7 +6,7 @@ game 'gta5'
 
 author 'Bolt'
 description 'Um painel moderno para seleção de peds com integração vRP, criado por Bolt.'
-version '1.1.0'
+version '2.0.0' -- Versão funcional completa
 
 -- Define a página da UI
 ui_page 'html/index.html'
@@ -19,15 +19,12 @@ files {
 }
 
 -- Scripts compartilhados, de cliente e de servidor
-shared_script 'config.lua'
+shared_script '@vRP/lib/utils.lua'
 client_script 'client/client.lua'
 server_script 'server/server.lua'
 
--- Dependências essenciais para vRP e oxmysql
-dependency 'vRP'
+-- Dependências essenciais
+dependency 'vrp'
 dependency 'oxmysql'
-
-shared_script '@vRP/lib/utils.lua'
-server_script '@oxmysql/lib/MySQL.lua'
 
 lua54 'yes'

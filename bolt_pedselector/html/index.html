@@ -1,19 +1,21 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bolt - Seletor de Ped</title>
+    <title>Seletor de Peds</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="container" class="hidden">
-        <div class="header">
-            <h1>Seletor de Personagem</h1>
-            <p>Escolha um personagem para assumir</p>
-        </div>
-        <div id="ped-grid">
-            <!-- Os cards dos peds serão inseridos aqui pelo JavaScript -->
+        <div class="panel">
+            <div class="header">
+                <h1>Seletor de Peds</h1>
+                <button id="close-btn">X</button>
+            </div>
+            <div id="ped-grid" class="ped-grid">
+                <!-- Cards dos peds serão inseridos aqui pelo script.js -->
+            </div>
         </div>
     </div>
     <script src="script.js"></script>

@@ -1,32 +1,46 @@
 -- 'bolt_pedselector' by Bolt
--- Script do lado do servidor com lógica vRP e oxmysql.
+-- v2.0.0: Versão funcional com sistema de compra e teste.
 
--- Inicia o proxy do vRP para comunicação segura com o cliente
-local Tunnel = module("vrp", "lib/Tunnel")
-local Proxy = module("vrp", "lib/Proxy")
-vRP = Proxy.getInterface("vRP")
-DwarfServer = {}
-Tunnel.bindInterface("bolt_pedselector", DwarfServer)
+local Tunnel = module("lib/Tunnel")
+local vRP = Tunnel.getInterface("vRP")
 
--- Função para obter o identificador do jogador (ex: license)
+-- Função segura para obter o identificador do jogador, com logs de erro.
 function getPlayerIdentifier(source)
-    local user_id = vRP.getUserId({source})
-    if user_id then
-        local identity = vRP.getUserIdentity({user_id})
-        if identity and identity.license then
-            return "license:" .. identity.license
+    local p, identifier = pcall(function()
+        local user_id = vRP.getUserId({source})
+        if not user_id then
+            print("[bolt_pedselector] [SERVER] ERRO: vRP.getUserId retornou nulo.")
+            return nil
         end
+
+        local identity = vRP.getUserIdentity({user_id})
+        if not identity or not identity.license then
+            print("[bolt_pedselector] [SERVER] ERRO: vRP.getUserIdentity não retornou uma identidade ou licença válida.")
+            return nil
+        end
+
+        return "license:" .. identity.license
+    end)
+
+    if not p then
+        print(("[bolt_pedselector] [SERVER] ERRO CRÍTICO em getPlayerIdentifier: %s"):format(tostring(identifier)))
+        return nil
     end
-    return nil
+
+    return identifier
 end
 
--- Função exposta ao cliente para buscar a lista de anões
-function DwarfServer.getDwarfs()
+RegisterNetEvent('bolt_pedselector:getDwarfs', function()
     local source = source
     local identifier = getPlayerIdentifier(source)
-    if not identifier then return {} end
 
-    -- Prepara a query para buscar todos os anões e marcar os que o jogador já possui
+    if not identifier then
+        print("[bolt_pedselector] [SERVER] AVISO: Identificador não encontrado. O painel não será aberto.")
+        vRP.notify(source, "~r~Não foi possível carregar seus dados. Tente novamente.")
+        TriggerClientEvent('bolt_pedselector:receiveDwarfs', source, {})
+        return
+    end
+
     local query = [[
         SELECT
             d.id,
@@ -34,17 +48,31 @@ function DwarfServer.getDwarfs()
             d.model,
             d.image_url,
             d.price,
-            CASE WHEN pd.id IS NOT NULL THEN true ELSE false END AS purchased
+            CASE WHEN pd.id IS NOT NULL THEN 1 ELSE 0 END AS purchased
         FROM dwarfs d
         LEFT JOIN player_dwarfs pd ON d.id = pd.dwarf_id AND pd.player_identifier = ?
     ]]
 
-    -- Executa a query usando o sistema do vRP/oxmysql
-    local result = MySQL.query.await(query, {identifier})
-    return result or {}
-end
+    local success, result = pcall(function()
+        return MySQL.query.await(query, {identifier})
+    end)
 
--- Evento para comprar um anão
+    if not success then
+        print(("[bolt_pedselector] [SERVER] ERRO na consulta SQL: %s"):format(tostring(result)))
+        vRP.notify(source, "~r~Erro ao carregar a lista de peds.")
+        TriggerClientEvent('bolt_pedselector:receiveDwarfs', source, {})
+        return
+    end
+
+    if result then
+        for i, ped in ipairs(result) do
+            ped.purchased = (ped.purchased == 1)
+        end
+    end
+
+    TriggerClientEvent('bolt_pedselector:receiveDwarfs', source, result or {})
+end)
+
 RegisterNetEvent('bolt_pedselector:buyDwarf', function(dwarfId)
     local source = source
     local user_id = vRP.getUserId({source})
@@ -52,48 +80,37 @@ RegisterNetEvent('bolt_pedselector:buyDwarf', function(dwarfId)
 
     if not user_id or not identifier or not dwarfId then return end
 
-    -- 1. Busca o preço do anão e verifica se o jogador já o possui
-    local dwarfQuery = "SELECT price FROM dwarfs WHERE id = ?"
     local ownedQuery = "SELECT id FROM player_dwarfs WHERE player_identifier = ? AND dwarf_id = ?"
-
-    local dwarfResult = MySQL.query.await(dwarfQuery, {dwarfId})
     local ownedResult = MySQL.query.await(ownedQuery, {identifier, dwarfId})
 
-    if not dwarfResult or #dwarfResult == 0 then
-        -- Anão não encontrado
-        TriggerClientEvent('chat:addMessage', source, { args = {"^1[SISTEMA]", "Este ped não está à venda."} })
+    if ownedResult and #ownedResult > 0 then
+        vRP.notify(source, "~r~Você já possui este ped.")
         return
     end
 
-    if ownedResult and #ownedResult > 0 then
-        -- Jogador já possui o anão
-        TriggerClientEvent('chat:addMessage', source, { args = {"^1[SISTEMA]", "Você já possui este ped."} })
+    local dwarfQuery = "SELECT price FROM dwarfs WHERE id = ?"
+    local dwarfResult = MySQL.query.await(dwarfQuery, {dwarfId})
+
+    if not dwarfResult or #dwarfResult == 0 then
+        vRP.notify(source, "~r~Este ped não está à venda.")
         return
     end
 
     local price = dwarfResult[1].price
 
-    -- 2. Tenta efetuar o pagamento
     if vRP.tryPayment({user_id, price}) then
-        -- 3. Se o pagamento for bem-sucedido, insere o registro da compra
         local insertQuery = "INSERT INTO player_dwarfs (player_identifier, dwarf_id) VALUES (?, ?)"
         MySQL.execute.await(insertQuery, {identifier, dwarfId})
 
-        TriggerClientEvent('chat:addMessage', source, { args = {"^2[SISTEMA]", "Ped comprado com sucesso!"} })
-        -- Notifica a UI para atualizar o estado (opcional, mas recomendado)
+        vRP.notify(source, "~g~Ped comprado com sucesso!")
         TriggerClientEvent('bolt_pedselector:purchaseSuccess', source, dwarfId)
     else
-        -- Saldo insuficiente
-        TriggerClientEvent('chat:addMessage', source, { args = {"^1[SISTEMA]", "Você não tem coins suficientes."} })
+        vRP.notify(source, "~r~Você não tem coins suficientes.")
     end
 end)
 
--- Evento para testar um anão
 RegisterNetEvent('bolt_pedselector:testDwarf', function(pedModel)
     local source = source
-    -- Lógica de teste (ex: aplicar skin por 5 minutos)
-    -- Por enquanto, apenas aplica a skin no cliente.
-    -- No futuro, pode-se adicionar um timer aqui.
     TriggerClientEvent('bolt_pedselector:applyTempSkin', source, pedModel)
-    TriggerClientEvent('chat:addMessage', source, { args = {"^3[SISTEMA]", "Você está testando um novo ped. Ele voltará ao normal em breve."} })
+    vRP.notify(source, "~y~Você está testando um novo ped. Ele voltará ao normal em breve.")
 end)
