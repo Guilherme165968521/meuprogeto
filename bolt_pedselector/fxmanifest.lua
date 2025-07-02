@@ -5,8 +5,8 @@ fx_version 'cerulean'
 game 'gta5'
 
 author 'Bolt'
-description 'Um painel moderno para seleção de peds, criado por Bolt.'
-version '1.0.0'
+description 'Um painel moderno para seleção de peds com integração vRP, criado por Bolt.'
+version '1.1.0'
 
 -- Define a página da UI
 ui_page 'html/index.html'
@@ -22,5 +22,12 @@ files {
 shared_script 'config.lua'
 client_script 'client/client.lua'
 server_script 'server/server.lua'
+
+-- Dependências essenciais para vRP e oxmysql
+dependency 'vRP'
+dependency 'oxmysql'
+
+shared_script '@vRP/lib/utils.lua'
+server_script '@oxmysql/lib/MySQL.lua'
 
 lua54 'yes'
