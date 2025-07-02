@@ -1,0 +1,4 @@
+-- 'bolt_pedselector' by Bolt
+-- Script do lado do servidor.
+-- Atualmente, nenhuma lógica do lado do servidor é necessária para este recurso.
+-- Este arquivo está incluído para conformidade com o fxmanifest.lua.
